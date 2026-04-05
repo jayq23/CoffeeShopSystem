@@ -1,0 +1,246 @@
+.bodyLogin {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    width: 100vw;
+    background: linear-gradient(
+        to right,
+        hsl(32, 62%, 49%),
+        hsl(50, 94%, 18%),
+        hsl(41, 66%, 45%)
+    );
+    font-family: 'Avenir', sans-serif;
+}
+input{
+    font-family: 'Roboto', sans-serif;
+}
+.loginContainer{
+    background-color: rgba(251, 251, 251, 0.736);
+    height: 450px;
+    width: 400px;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+.showPassword {
+    display: flex;
+    align-items: center;
+    margin-top: 10px;
+    margin-left: -180px;
+}
+
+/* Mobile quick-login helpers (desktop hidden) */
+.mobileQuickLogin {
+    display: none;
+}
+.loginContainer h1{
+    color: rgba(0, 0, 0, 0.81);
+    margin-bottom: 20px;
+    font-size: 60px;
+    margin-top: -50px;
+}
+.userLog, .passLog {
+    align-self: flex-start;
+    margin-left: 40px;
+    margin-top: 10px;
+    font-size: 18px;
+    color: #333;
+    font-weight: bold;
+}
+.username-input, .password-input {
+    width: 320px;
+    height: 30px;
+    margin-left: 10px;
+    margin-top: 5px;
+    padding: 5px;
+    font-size: 16px;
+    outline-style: none;
+    border: none;
+    border-radius: 5px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+.username-input:hover, .password-input:hover {
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+    transform: scale(1.02);
+    transition: all 0.3s;
+}
+.optionsRole {
+    display: block;
+    margin: 10px auto;
+    margin-left: 12px;
+    width: 100px;
+    height: 25px;
+    font-size: 16px;
+    border: none;
+    outline-style: none;
+    border-radius: 5px;
+    cursor: pointer;
+    background-color: rgb(203, 200, 190);
+}
+.optionsRole option {
+    padding: 5px;
+    font-family: cursive, sans-serif;
+    border-radius: 2px;
+}
+.buttonsLogin {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 30px;
+}
+.btnLogin{
+    background-color: #676d35;
+    color: white;
+    font-weight: bold;
+    padding: 7px 25px;
+    margin: 0 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    border: 2px solid rgb(240, 240, 240)
+}
+.btnLogin:hover {
+    background-color: #4b4f24;
+    transform: translateY(-2px);
+    transition: all 0.2s;
+}
+.btnLogin:active {
+    transform: translateY(0);
+}
+.btnRegister{
+    background-color: #a68c27;
+    color: white;
+    border: 2px solid rgb(240, 240, 240);
+    font-weight: bold;
+    padding: 7px 20px;
+    margin: 0 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+}
+.btnRegister:hover {
+    background-color: #7a6c1a;
+    transform: translateY(-2px);
+    transition: all 0.2s;
+}
+.btnRegister:active {
+    transform: translateY(0);
+}
+.myh1 {
+    margin-top: 15px;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 60px;
+    color: #373434;
+}
+.BackButton {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background-color: #5d632d;
+    color: white;
+    border: 1px solid rgba(176, 134, 7, 0.735);
+    font-weight: bold;
+    padding: 7px 25px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.3s ease;
+}
+
+.BackButton:hover {
+    background-color: #31331b;
+}
+
+/* Page transition animation */
+.bodyLogin.fade-out {
+    animation: fadeOut 0.3s ease-in-out forwards;
+}
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+}
+
+.bodyLogin {
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+@media (max-width: 450px) {
+    .loginContainer {
+        width: 90%;
+        height: auto;
+        padding: 20px 0;
+        padding-bottom: 100px; /* room for mobile quick actions */
+    }
+    .loginContainer h1 {
+        font-size: 40px;
+        margin-top: 0;
+    }
+    .username-input, .password-input {
+        width: 90%;
+        height: 44px;
+        font-size: 18px;
+        padding: 10px;
+        margin-left: 0;
+    }
+    .showPassword{ margin-left: 0; }
+    .buttonsLogin {
+        flex-direction: row;
+    }
+    .btnLogin, .btnRegister {
+        width: 100%;
+    }
+    /* show quick-login buttons as a fixed bottom bar on mobile */
+    .mobileQuickLogin {
+        display: flex;
+        position: fixed;
+        left: 12px;
+        right: 12px;
+        bottom: 12px;
+        gap: 12px;
+        justify-content: center;
+        align-items: center;
+        z-index: 60;
+    }
+    .btnQuick {
+        flex: 1 1 auto;
+        padding: 12px 8px;
+        font-size: 16px;
+        border-radius: 8px;
+        border: none;
+        cursor: pointer;
+        font-weight: bold;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.15);
+    }
+    .btnQuickAdmin{
+        background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%);
+        color: #f5f0e8;
+        border: 2px solid #d4a574;
+    }
+    .btnQuickUser{
+        background: rgba(210, 207, 181, 0.95);
+        color: #3e2723;
+        border: 2px solid rgba(139, 69, 19, 0.12);
+    }
+}

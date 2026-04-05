@@ -1,0 +1,228 @@
+/* Shared design tokens */
+:root{
+  --accent-dark: #3e2723;
+  --accent-mid: #8B4513;
+  --accent-light: #d4a574;
+  --bg-dark: #5d4037;
+  --radius: 12px;
+  --btn-padding: 12px 20px;
+}
+
+.bodyRegister {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 120vh;
+    width: 100vw;
+    background: linear-gradient(135deg, var(--bg-dark) 0%, #5d4037 100%);
+    font-family: 'Georgia', 'Times New Roman', serif;
+    position: relative;
+}
+
+.bodyRegister::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="50" font-size="100" opacity="0.05" fill="%23ffffff">☕</text></svg>');
+    background-size: 200px;
+    pointer-events: none;
+}
+
+.registerContainer {
+    background: linear-gradient(135deg, #ffffff 0%, #faf8f5 100%);
+    height: 100%;
+    width: 500px;
+    margin: 0;
+    padding: 40px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    border-radius: 15px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    border: 3px solid #d4a574;
+    position: relative;
+    z-index: 1;
+}
+
+.registerContainer h1 {
+    color: #3e2723;
+    margin: 0 0 30px 0;
+    font-size: 32px;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+    letter-spacing: 1px;
+}
+
+.registerContainer label {
+    align-self: flex-start;
+    margin: 15px 0 8px 0;
+    font-size: 14px;
+    color: #3e2723;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.userInput, .passInput, .confirmPassInput, .emailInput, .numberInput, .roleSelect, .fullNameInput {
+    width: 100%;
+    height: 45px;
+    margin-top: 8px;
+    padding: 12px 15px;
+    font-size: 14px;
+    font-family: 'Georgia', serif;
+    outline: none;
+    border: 2px solid #e8dcc8;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+    color: #3e2723;
+    background: white;
+    transition: all 0.3s ease;
+    box-sizing: border-box;
+}
+
+.userInput:focus, .passInput:focus, .confirmPassInput:focus, .emailInput:focus, .numberInput:focus, .roleSelect:focus, .fullNameInput:focus {
+    border-color: #d4a574;
+    box-shadow: 0 0 0 3px rgba(212, 165, 116, 0.1);
+}
+
+.roleSelect, .positionSelect {
+    cursor: pointer;
+    height: 45px;
+    padding: 12px 15px;
+}
+
+.roleSelect option, .positionSelect option {
+    background: white;
+    color: #3e2723;
+}
+
+.buttonRegister {
+    margin-top: 30px;
+    width: 100%;
+    height: 45px;
+    background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%);
+    color: #f5f0e8;
+    font-size: 16px;
+    font-weight: bold;
+    border: 2px solid #d4a574;
+    border-radius: 8px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(139, 69, 19, 0.2);
+    transition: all 0.3s ease;
+    font-family: 'Georgia', serif;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.buttonRegister:hover {
+    background: linear-gradient(135deg, #A0522D 0%, #8B4513 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(139, 69, 19, 0.3);
+}
+
+.buttonRegister:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 5px rgba(139, 69, 19, 0.2);
+}
+
+.backButton {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: linear-gradient(135deg, #d4a574 0%, #cd853f 100%);
+    color: #3e2723;
+    border: 2px solid #8B4513;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 14px;
+    transition: all 0.3s ease;
+    font-family: 'Georgia', serif;
+    z-index: 2;
+}
+
+.backButton:hover {
+    background: linear-gradient(135deg, #cd853f 0%, #d4a574 100%);
+    transform: translateY(-2px);
+}
+
+/* Page transition animation */
+.bodyRegister.fade-out {
+    animation: fadeOut 0.4s ease-in-out forwards;
+}
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+}
+
+.bodyRegister {
+    animation: fadeIn 0.4s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Media mobile */
+@media (max-width: 600px) {
+    .registerContainer {
+        width: 90%;
+        max-width: 450px;
+        padding: 30px 20px;
+        border-radius: 12px;
+    }
+
+    .registerContainer h1 {
+        font-size: 26px;
+        margin-bottom: 20px;
+    }
+
+    .userInput, .passInput, .confirmPassInput, .emailInput, .numberInput, .fullNameInput {
+        width: 100%;
+        height: 40px;
+        font-size: 13px;
+    }
+
+    .registerContainer label {
+        font-size: 12px;
+        margin-top: 12px;
+    }
+
+    .buttonRegister {
+        margin-top: 25px;
+        height: 40px;
+        font-size: 14px;
+    }
+
+    .backButton {
+        top: 15px;
+        left: 15px;
+        padding: 8px 15px;
+        font-size: 12px;
+    }
+}
+
+/* Extra small-screen tweaks */
+@media (max-width: 400px) {
+  .buttonRegister{ padding: 12px 14px; font-size: 14px; }
+  .registerContainer{ padding-bottom: 120px; }
+}
