@@ -2,8 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import '../styles/admin.css';
 import { Users, Package, ShoppingCart, TrendingUp, Settings, LogOut, X, Edit, Trash2, Plus, Search } from "lucide-react";
-
-const API_BASE_URL = "http://localhost:5000";
+import API_BASE_URL from "../config/api";
 
 function Admin() {
   const navigate = useNavigate();

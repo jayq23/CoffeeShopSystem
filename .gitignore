@@ -25,3 +25,16 @@ dist-ssr
 
 backend/db.sqlite
 backend/*.sqlite
+
+# Environment files (secrets)
+.env
+.env.local
+.env.*.local
+backend/.env
+backend/.env.local
+backend/.env.*.local
+
+# Keep safe templates/versioned config
+!.env.example
+!backend/.env.example
+!.env.production
