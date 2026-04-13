@@ -1,9 +1,3 @@
-import matchaLatteImg from "../assets/matchaLatte.jpg";
-import chocolateDrinkImg from "../assets/chocolateDrink.jpg";
-import caramelHazelnutImg from "../assets/caramelHazelnut.jpg";
-import iceAmericanoImg from "../assets/iceAmerikano.jpg";
-import espressoImg from "../assets/espresso.jpg";
-import milkteaImg from "../assets/milktea.jpg";
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import '../styles/staff.css';
