@@ -4,7 +4,7 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import './styles/login.css'
 import './styles/oms.css'
 import './styles/register.css'
-import './styles/frontPage.css'
+import './styles/frontpage.css'
 import App from './App.jsx'
 
 createRoot(document.getElementById('root')).render(
