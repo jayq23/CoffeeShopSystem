@@ -15,6 +15,7 @@ const DEFAULT_ADMIN = {
     password: ADMIN_PASSWORD,
     role: 'admin'
 }
+app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 
 app.use(cors({
     origin: (origin, callback) => {

@@ -7,6 +7,10 @@ import './styles/register.css'
 import './styles/frontpage.css'
 import App from './App.jsx'
 
+useEffect(() => {
+  fetch("/api/health").catch(() => {}); // wake up the server
+}, []);
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <App />
