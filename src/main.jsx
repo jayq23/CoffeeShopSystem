@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { StrictMode, useEffect } from 'react'
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './styles/login.css'
 import './styles/oms.css'
