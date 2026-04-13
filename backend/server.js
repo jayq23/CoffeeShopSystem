@@ -15,6 +15,20 @@ const DEFAULT_ADMIN = {
     password: ADMIN_PASSWORD,
     role: 'admin'
 }
+const ALLOWED_ORIGINS = [
+  process.env.FRONTEND_ORIGIN || 'http://localhost:5173',
+  'http://localhost:5174',
+]
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      callback(null, true)
+    } else {
+      callback(new Error('Not allowed by CORS'))
+    }
+  },
+}))
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 
 app.use(cors({
