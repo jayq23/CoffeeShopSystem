@@ -2,22 +2,46 @@ const express = require('express')
 const cors = require('cors')
 const Database =  require('better-sqlite3')
 const path = require('path')
+const bcrypt = require('bcryptjs')
 
 const app = express()
 const db = new Database(path.join(__dirname, 'db.sqlite'))
+const BCRYPT_ROUNDS = 10
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173'
+const ADMIN_USERNAME = (process.env.ADMIN_USERNAME || 'jay123').trim().toLowerCase()
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'jay123'
 const DEFAULT_ADMIN = {
-    username: 'jay123',
-    password: 'jay123',
+    username: ADMIN_USERNAME,
+    password: ADMIN_PASSWORD,
     role: 'admin'
 }
 
-app.use(cors())
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin || origin === FRONTEND_ORIGIN) {
+            callback(null, true)
+            return
+        }
+        callback(new Error('Not allowed by CORS'))
+    },
+}))
 app.use(express.json())
 
 const parseNumber = (value, fallback = 0) => {
     const parsed = Number(value)
     return Number.isFinite(parsed) ? parsed : fallback
 }
+
+const isBcryptHash = (value) => typeof value === 'string' && value.startsWith('$2')
+const hashPassword = (plainTextPassword) => bcrypt.hashSync(plainTextPassword, BCRYPT_ROUNDS)
+const ensureHashedPassword = (rawPassword) => {
+    if (!rawPassword) {
+        return ''
+    }
+    return isBcryptHash(rawPassword) ? rawPassword : hashPassword(rawPassword)
+}
+
+const todayIsoDate = () => new Date().toISOString().split('T')[0]
 
 //TABLE CREATION
 
@@ -49,7 +73,21 @@ const adminExistsStmt = db.prepare('SELECT id FROM users WHERE username = ? AND 
 const insertUserStmt = db.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?)')
 
 if (!adminExistsStmt.get(DEFAULT_ADMIN.username, DEFAULT_ADMIN.role)) {
-    insertUserStmt.run(DEFAULT_ADMIN.username, DEFAULT_ADMIN.password, DEFAULT_ADMIN.role)
+    insertUserStmt.run(DEFAULT_ADMIN.username, hashPassword(DEFAULT_ADMIN.password), DEFAULT_ADMIN.role)
+}
+
+// Migrate legacy plaintext passwords to bcrypt hashes.
+const hashLegacyPasswords = () => {
+    const tables = ['users', 'registrations', 'staffs']
+    for (const tableName of tables) {
+        const rows = db.prepare(`SELECT id, password FROM ${tableName}`).all()
+        const updateStmt = db.prepare(`UPDATE ${tableName} SET password = ? WHERE id = ?`)
+        for (const row of rows) {
+            if (!isBcryptHash(row.password)) {
+                updateStmt.run(hashPassword(row.password), row.id)
+            }
+        }
+    }
 }
 
 //products table
@@ -100,6 +138,42 @@ CREATE TABLE IF NOT EXISTS staffs (
 );
 `)
 
+const ensureStaffForCashierStmt = db.prepare('SELECT id FROM staffs WHERE username = ?')
+const insertStaffForCashierStmt = db.prepare('INSERT INTO staffs (name, position, email, joinDate, username, password) VALUES (?, ?, ?, ?, ?, ?)')
+
+const ensureCashierStaffRecord = ({ username, password, name, email }) => {
+    const normalizedUsername = username?.trim()?.toLowerCase()
+    if (!normalizedUsername) {
+        return
+    }
+
+    if (ensureStaffForCashierStmt.get(normalizedUsername)) {
+        return
+    }
+
+    const safeName = name?.trim() || normalizedUsername
+    const safeEmail = email?.trim()?.toLowerCase() || `${normalizedUsername}@cashier.local`
+    insertStaffForCashierStmt.run(safeName, 'Cashier', safeEmail, todayIsoDate(), normalizedUsername, password)
+}
+
+// Backfill legacy cashier accounts that exist in users but are missing in staffs.
+const missingCashierStaffRows = db.prepare(`
+    SELECT u.username, u.password, r.name, r.email
+    FROM users u
+    LEFT JOIN staffs s ON s.username = u.username
+    LEFT JOIN registrations r ON r.username = u.username
+    WHERE u.role = 'user' AND s.id IS NULL
+`).all()
+
+for (const row of missingCashierStaffRows) {
+    ensureCashierStaffRecord({
+        username: row.username,
+        password: row.password,
+        name: row.name,
+        email: row.email,
+    })
+}
+
 //shop settings table
 db.exec(`
 CREATE TABLE IF NOT EXISTS shopSettings (
@@ -110,6 +184,8 @@ CREATE TABLE IF NOT EXISTS shopSettings (
     email TEXT NOT NULL
 );
 `)
+
+hashLegacyPasswords()
 
 
 //Regisreration endpoint
@@ -139,10 +215,17 @@ app.post('/api/register', (req, res) => {
         }
 
         const stmt = db.prepare('INSERT INTO registrations (name, email, number, username, password, role) VALUES (?, ?, ?, ?, ?, ?)');
-        stmt.run(name, normalizedEmail, number, normalizedUsername, password, role);
+        const hashedPassword = hashPassword(password)
+        stmt.run(name, normalizedEmail, number, normalizedUsername, hashedPassword, role);
 
         // Keep login source in users table while preserving registration details separately.
-        insertUserStmt.run(normalizedUsername, password, role)
+        insertUserStmt.run(normalizedUsername, hashedPassword, role)
+        ensureCashierStaffRecord({
+            username: normalizedUsername,
+            password: hashedPassword,
+            name,
+            email: normalizedEmail,
+        })
 
         res.status(201).json({ message: 'Registration successful', user: { username: normalizedUsername, role } });
 
@@ -353,7 +436,7 @@ app.delete('/api/orders/:id', (req, res) => {
 
 app.get('/api/staffs', (_req, res) => {
     try {
-        const rows = db.prepare('SELECT id, name, position, email, joinDate, username, password FROM staffs ORDER BY id ASC').all()
+        const rows = db.prepare('SELECT id, name, position, email, joinDate, username FROM staffs ORDER BY id ASC').all()
         res.json({ staffs: rows })
     } catch (error) {
         console.error('Error fetching staffs:', error)
@@ -379,9 +462,10 @@ app.post('/api/staffs', (req, res) => {
             return res.status(409).json({ message: 'Username already exists' })
         }
 
+        const hashedPassword = hashPassword(password)
         const insertStaffStmt = db.prepare('INSERT INTO staffs (name, position, email, joinDate, username, password) VALUES (?, ?, ?, ?, ?, ?)')
-        const result = insertStaffStmt.run(name.trim(), position || 'Cashier', email.trim(), joinDate, normalizedUsername, password)
-        insertUserStmt.run(normalizedUsername, password, 'user')
+        const result = insertStaffStmt.run(name.trim(), position || 'Cashier', email.trim(), joinDate, normalizedUsername, hashedPassword)
+        insertUserStmt.run(normalizedUsername, hashedPassword, 'user')
 
         res.status(201).json({
             message: 'Staff created',
@@ -392,7 +476,6 @@ app.post('/api/staffs', (req, res) => {
                 email: email.trim(),
                 joinDate,
                 username: normalizedUsername,
-                password,
             }
         })
     } catch (error) {
@@ -426,11 +509,12 @@ app.put('/api/staffs/:id', (req, res) => {
             return res.status(409).json({ message: 'Username already exists' })
         }
 
+        const hashedPassword = ensureHashedPassword(password)
         const staffStmt = db.prepare('UPDATE staffs SET name = ?, position = ?, email = ?, joinDate = ?, username = ?, password = ? WHERE id = ?')
-        staffStmt.run(name.trim(), position || 'Cashier', email.trim(), joinDate, normalizedUsername, password, id)
+        staffStmt.run(name.trim(), position || 'Cashier', email.trim(), joinDate, normalizedUsername, hashedPassword, id)
 
         const updateUserStmt = db.prepare('UPDATE users SET username = ?, password = ? WHERE username = ? AND role = ?')
-        updateUserStmt.run(normalizedUsername, password, currentStaff.username, 'user')
+        updateUserStmt.run(normalizedUsername, hashedPassword, currentStaff.username, 'user')
 
         res.json({ message: 'Staff updated' })
     } catch (error) {
@@ -535,10 +619,10 @@ app.post('/api/reset', (_req, res) => {
                 return res.status(401).json({ message: 'Only owner account can access admin login' });
             }
 
-      const stmt = db.prepare('SELECT * FROM users WHERE username = ? AND password = ? AND role = ?');
-            const user = stmt.get(normalizedUsername, password, role);
+    const stmt = db.prepare('SELECT * FROM users WHERE username = ? AND role = ?');
+        const user = stmt.get(normalizedUsername, role);
 
-      if (user) {
+    if (user && bcrypt.compareSync(password, user.password)) {
         res.json({ message: 'Login successful', user: { id: user.id, username: user.username, role: user.role } });
       } else {
         res.status(401).json({ message: 'Invalid credentials' });

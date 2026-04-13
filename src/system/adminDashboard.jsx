@@ -85,6 +85,54 @@ function Admin() {
     { title: "Customers", value: customers.length.toString(), icon: Users, color: "#D2691E" },
   ];
 
+  const currentDateTimeLabel = new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date());
+
+  const chartMonthLabels = (() => {
+    const labels = [];
+    const now = new Date();
+
+    for (let index = 6; index >= 0; index -= 1) {
+      const monthDate = new Date(now.getFullYear(), now.getMonth() - index, 1);
+      labels.push(monthDate.toLocaleString("en-US", { month: "short" }));
+    }
+
+    return labels;
+  })();
+
+  const chartSeries = (() => {
+    const monthlyTotals = Array.from({ length: 7 }, () => 0);
+    const now = new Date();
+
+    orders.forEach((order) => {
+      const date = new Date(order.date);
+      if (Number.isNaN(date.getTime())) {
+        return;
+      }
+
+      const monthOffset = (now.getFullYear() - date.getFullYear()) * 12 + (now.getMonth() - date.getMonth());
+      if (monthOffset >= 0 && monthOffset < monthlyTotals.length) {
+        monthlyTotals[6 - monthOffset] += Number(order.total) || 0;
+      }
+    });
+
+    return monthlyTotals.map((value) => Math.max(0, value / 100));
+  })();
+
+  const maxChartValue = Math.max(...chartSeries, 0);
+
+  const chartPoints = chartSeries
+    .map((value, index) => {
+      const x = chartSeries.length === 1 ? 330 : (index / (chartSeries.length - 1)) * 660;
+      const y = maxChartValue > 0 ? 230 - (value / maxChartValue) * 180 : 230;
+      return `${x},${y}`;
+    })
+    .join(" ");
+
+  const chartFillPoints = `${chartPoints} 660,250 0,250`;
+
   const logOut = () => {
     if(window.confirm("Are you sure you want to log out?")) {
       localStorage.removeItem("isAuth");
@@ -485,6 +533,11 @@ function Admin() {
     saveSettings();
   };
 
+  const saveTaxCurrency = () => {
+    alert("Tax and currency settings are not connected to the server yet.");
+    closeModal();
+  };
+
 
 
   const deleteOrder = async (id) => {
@@ -555,11 +608,41 @@ function Admin() {
         <div className="admin-content">
           {activeTab === "dashboard" && (
             <>
-              <div className="stats-grid">
+              <div className="dashboard-section dashboard-traffic">
+                <div className="section-header compact-header">
+                  <div>
+                    <h2>Traffic</h2>
+                    <p className="section-subtitle">As of {currentDateTimeLabel}</p>
+                  </div>
+                </div>
+
+                <div className="traffic-chart-wrap">
+                  <svg viewBox="0 0 660 250" className="traffic-chart" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient id="trafficFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#d4a574" stopOpacity="0.3" />
+                        <stop offset="100%" stopColor="#d4a574" stopOpacity="0" />
+                      </linearGradient>
+                    </defs>
+                    <line x1="0" y1="50" x2="660" y2="50" className="chart-grid-line" />
+                    <line x1="0" y1="125" x2="660" y2="125" className="chart-grid-line" />
+                    <line x1="0" y1="200" x2="660" y2="200" className="chart-grid-line" />
+                    <polyline points={chartFillPoints} className="traffic-fill" />
+                    <polyline points={chartPoints} className="traffic-line" />
+                  </svg>
+                  <div className="traffic-axis">
+                    {chartMonthLabels.map((label) => (
+                      <span key={label}>{label}</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="stats-grid compact">
                 {stats.map((stat, index) => (
-                  <div key={index} className="stat-card">
+                  <div key={index} className="stat-card coreui">
                     <div className="stat-icon" style={{ backgroundColor: stat.color }}>
-                      <stat.icon size={24} color="white" />
+                      <stat.icon size={22} color="white" />
                     </div>
                     <div className="stat-info">
                       <p className="stat-title">{stat.title}</p>

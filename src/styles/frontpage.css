@@ -19,9 +19,9 @@ body {
 .secons-container {
     background: linear-gradient(
         to right,
-        hsl(23, 21%, 32%),
-        hsl(0, 79%, 81%),
-        hsl(23, 21%, 32%)
+        hsl(23, 32%, 22%),
+        hsl(35, 59%, 47%),
+        hsl(24, 33%, 24%)
     );
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
     height: 100vh;
@@ -76,7 +76,7 @@ body {
 .descp span:nth-child(28){ animation-delay: 2.7s;color: rgba(35, 38, 46, 0.881)}
 .descp span:nth-child(29){ animation-delay: 2.8s;color: rgba(17, 18, 21, 0.881)}
 .descp span:nth-child(30){ animation-delay: 2.9s;color: rgba(17, 20, 24, 0.881)}
-.descp span:nth-child(31){ animation-delay: 3s;color: rgba(156, 9, 9, 0.881);} 
+.descp span:nth-child(31){ animation-delay: 3s;color: rgba(206, 136, 6, 0.881);} 
 
 .ints {
   font-size: 5em;
@@ -139,8 +139,8 @@ body {
 
 .sign-in {
   background-color: #3f3606;
-  color: #ffffff;
-  border: 2px solid #e0dcc4;
+  color: #f5cb9e;
+  border: 2px solid #d79720;
   padding: 10px 60px;
   list-style: none;;
   border-radius: 6px;

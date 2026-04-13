@@ -26,6 +26,8 @@ function Login() {
             }, 400);
         } else {
             navigate(path);
+            alert("Navigation error: container element not found.");
+            console.log("Navigation error: container element not found.");
         }
     };
 

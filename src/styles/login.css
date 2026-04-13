@@ -6,9 +6,9 @@
     width: 100vw;
     background: linear-gradient(
         to right,
-        hsl(32, 62%, 49%),
-        hsl(50, 94%, 18%),
-        hsl(41, 66%, 45%)
+        hsl(32, 69%, 14%),
+        hsl(46, 66%, 25%),
+        hsl(32, 69%, 14%)
     );
     font-family: 'Avenir', sans-serif;
 }
