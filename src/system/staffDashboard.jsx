@@ -8,8 +8,7 @@ import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import '../styles/staff.css';
 import { ShoppingCart, X, Plus, Minus } from "lucide-react";
-
-const API_BASE_URL = "http://localhost:5000";
+import API_BASE_URL from "../config/api";
 
 function StaffDashboard() {
   const navigate = useNavigate();
