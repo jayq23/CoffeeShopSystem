@@ -6,6 +6,7 @@ import Register from "./auth/register.jsx";
 import StaffDashboard from "./system/staffDashboard.jsx";
 import ProtectedRoute from "./ProtectedRoute.jsx";
 import Admin from "./system/adminDashboard.jsx";
+import Receipt from "./components/Receipt.jsx";
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/frontPage" element={<FrontPage />} />
         <Route path="/admin" element={<Admin />} />
+        <Route path="/admin/receipts" element={<Receipt />} />
 
         <Route
           path="/staffDashboard"
@@ -25,6 +27,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/staff/receipts" element={<Receipt />} />
       </Routes>
     </BrowserRouter>
   );

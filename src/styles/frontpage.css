@@ -12,9 +12,13 @@
 body {
     margin: 0;
     padding: 0;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    box-sizing: border-box;
+}
+
+/* Ensure root fills viewport so the front page can stretch full width/height */
+html, body, #root {
+  height: 100%;
+  width: 100%;
 }
 .secons-container {
     background: linear-gradient(
@@ -24,8 +28,11 @@ body {
         hsl(24, 33%, 24%)
     );
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
-    height: 100vh;
-    width: 100vw;
+    min-height: 100vh;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 40px 20px;
+    animation: fadeIn 0.2s ease-in-out;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -33,7 +40,8 @@ body {
 }
 .front-page {
   text-align: center;
-
+  padding: 20px 0;
+  flex-grow: 0;
 }
 .descp span {
     opacity: 0;
@@ -96,9 +104,11 @@ body {
 
 .logo {
   width: 400px;
+  height: 400px;
   border-radius: 100%;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 1);;
-  margin-right: 200px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 1);
+  object-fit: cover;
+  flex-shrink: 0;
 }
 .logo:hover {
   animation: pulse 1s infinite;
@@ -120,7 +130,7 @@ body {
   align-items: center;
   width: 300px;
   height: 190px;
-  background-color: #ede9e64b ;
+  background-color: #ede9e64b;
   border-radius: 10px;
   box-shadow:  0 4px 20px rgba(0, 0, 0, 0.2);
   position: relative;
@@ -142,7 +152,7 @@ body {
   color: #f5cb9e;
   border: 2px solid #d79720;
   padding: 10px 60px;
-  list-style: none;;
+  list-style: none;
   border-radius: 6px;
   margin-top: 40px;
   cursor: pointer;
@@ -170,9 +180,7 @@ body {
   }
 }
 
-.secons-container {
-  animation: fadeIn 0.2s ease-in-out;
-}
+/* combine animation with main container rule above */
 
 @keyframes fadeIn {
   from {
@@ -191,56 +199,74 @@ body {
 .setupLogo{
   display: flex;
   flex-direction: row;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
+  gap: 80px;
   width: auto;
   margin-bottom: 50px;
+  flex-wrap: wrap;
+}
+
+/* Tablet & small screens */
+@media (max-width: 900px) {
+  .setupLogo {
+    gap: 40px;
+  }
+  .logo {
+    width: 320px;
+    height: 320px;
+  }
+  .choice {
+    width: 260px;
+    height: 160px;
+  }
 }
 
 /* Mobile media queries */
-@media (max-width: 400px) {
+@media (max-width: 600px) {
+  .secons-container {
+    padding: 20px;
+    justify-content: flex-start;
+  }
+  .front-page {
+    padding: 20px 0;
+  }
   .logo {
-    width: 300px;
-    margin-bottom: 100px;
-    margin-right: 0;
-    animation: none;
+    width: 250px;
+    height: 250px;
+    margin-bottom: 20px;
     box-shadow: 0 0 30px rgba(0, 0, 0, 0.2);
   }
   .ints {
     font-size: 2.2em;
-    margin:0;
-    font-family:Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
+    margin: 0 0 10px 0;
+    font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
     color: rgba(0, 0, 0, 0.76);
-    margin-bottom: 10px;
   }
   .descp {
-    font-size: 2.2em;
-    margin:0;
-  }
-  .secons-container {
-    padding: 20px;
-    height: 95vh;
+    font-size: 1.8em;
+    margin: 0;
   }
   .setupLogo{
     flex-direction: column;
+    gap: 30px;
     margin: 0;
-    display: flex;
   }
   .choice{
     width: 250px;
-    height: 120px;
+    height: 140px;
     background: transparent;
     box-shadow: none;
-    margin-top: -20px;
+  }
+  .formText {
+    font-size: 3.5em;
+  }
+  .sign-in {
+    padding: 10px 40px;
+    font-size: 1.2em;
+    margin-top: 30px;
   }
   footer{
     display: none;
   }
-}
-
-/* Additional small-screen adjustments */
-@media (max-width: 600px) {
-  .sign-in{ width: 90%; padding: 12px 20px; font-size: 1.2em; border-radius: var(--radius); }
-  .descp{ font-size: 1.6em; }
-  .formText{ font-size: 2.2em; }
 }

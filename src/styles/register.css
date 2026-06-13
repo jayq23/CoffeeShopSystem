@@ -12,11 +12,12 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 120vh;
-    width: 100vw;
+    min-height: 100vh;
+    width: 100%;
     background: linear-gradient(135deg, var(--bg-dark) 0%, #5d4037 100%);
     font-family: 'Georgia', 'Times New Roman', serif;
     position: relative;
+    box-sizing: border-box;
 }
 
 .bodyRegister::before {
@@ -189,6 +190,8 @@
         max-width: 450px;
         padding: 30px 20px;
         border-radius: 12px;
+        height: auto;
+        margin: 20px auto;
     }
 
     .registerContainer h1 {
@@ -224,5 +227,6 @@
 /* Extra small-screen tweaks */
 @media (max-width: 400px) {
   .buttonRegister{ padding: 12px 14px; font-size: 14px; }
-  .registerContainer{ padding-bottom: 120px; }
+  .registerContainer{ padding: 20px 16px; height: auto; }
+  .registerContainer h1 { font-size: 22px; margin-bottom: 15px; }
 }

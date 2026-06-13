@@ -10,13 +10,14 @@
 
 /* Staff Dashboard Container */
 .staff-container {
-  width: 100vw;
+  width: 100%;
   height: 100vh;
   display: flex;
   flex-direction: column;
   background: linear-gradient(135deg, #f5f0e8 0%, #e8dcc8 100%);
   font-family: 'Georgia', 'Times New Roman', serif;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 /* Header */

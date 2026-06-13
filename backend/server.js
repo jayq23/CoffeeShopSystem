@@ -16,7 +16,7 @@ const DEFAULT_ADMIN = {
     role: 'admin'
 }
 const ALLOWED_ORIGINS = [
-  process.env.FRONTEND_ORIGIN || 'http://localhost:5173',
+  'http://localhost:5173',
   'http://localhost:5174',
 ]
 
@@ -29,18 +29,8 @@ app.use(cors({
     }
   },
 }))
+app.use(express.json({ limit: '10mb' }))
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
-
-app.use(cors({
-    origin: (origin, callback) => {
-        if (!origin || origin === FRONTEND_ORIGIN) {
-            callback(null, true)
-            return
-        }
-        callback(new Error('Not allowed by CORS'))
-    },
-}))
-app.use(express.json())
 
 const parseNumber = (value, fallback = 0) => {
     const parsed = Number(value)
@@ -113,9 +103,15 @@ CREATE TABLE IF NOT EXISTS products (
     stock INTEGER NOT NULL,
     price INTEGER NOT NULL,
     sales INTEGER DEFAULT 0,
-    category TEXT NOT NULL
+    category TEXT NOT NULL,
+    image TEXT DEFAULT NULL
 );
 `)
+
+// Migration: add image column if it doesn't exist yet
+try {
+    db.exec(`ALTER TABLE products ADD COLUMN image TEXT DEFAULT NULL`)
+} catch (_) {} // ignore if column already exists
 
 //customers table
 db.exec(`
@@ -136,9 +132,14 @@ CREATE TABLE IF NOT EXISTS orders (
     total INTEGER NOT NULL,
     date TEXT NOT NULL,
     details TEXT NOT NULL,
-    staffName TEXT
+    staffName TEXT,
+    cartItems TEXT
 );
 `)
+// Migration: add cartItems column if it doesn't exist yet
+try {
+    db.exec(`ALTER TABLE orders ADD COLUMN cartItems TEXT`)
+} catch (_) {}
 
 //staffs table
 db.exec(`
@@ -262,7 +263,7 @@ app.get('/api/users', (_req, res) => {
 
 app.get('/api/products', (_req, res) => {
     try {
-        const rows = db.prepare('SELECT id, name, stock, price, sales, category FROM products ORDER BY id ASC').all()
+        const rows = db.prepare('SELECT id, name, stock, price, sales, category, image FROM products ORDER BY id ASC').all()
         res.json({ products: rows })
     } catch (error) {
         console.error('Error fetching products:', error)
@@ -272,18 +273,18 @@ app.get('/api/products', (_req, res) => {
 
 app.post('/api/products', (req, res) => {
     try {
-        const { name, stock, price, category, sales } = req.body
+        const { name, stock, price, category, sales, image } = req.body
 
         if (!name || !category) {
             return res.status(400).json({ message: 'Name and category are required' })
         }
 
-        const stmt = db.prepare('INSERT INTO products (name, stock, price, sales, category) VALUES (?, ?, ?, ?, ?)')
-        const result = stmt.run(name.trim(), parseNumber(stock), parseNumber(price), parseNumber(sales), category)
+        const stmt = db.prepare('INSERT INTO products (name, stock, price, sales, category, image) VALUES (?, ?, ?, ?, ?, ?)')
+        const result = stmt.run(name.trim(), parseNumber(stock), parseNumber(price), parseNumber(sales), category, image || null)
 
         res.status(201).json({
             message: 'Product created',
-            product: { id: result.lastInsertRowid, name: name.trim(), stock: parseNumber(stock), price: parseNumber(price), sales: parseNumber(sales), category }
+            product: { id: result.lastInsertRowid, name: name.trim(), stock: parseNumber(stock), price: parseNumber(price), sales: parseNumber(sales), category, image: image || null }
         })
     } catch (error) {
         console.error('Error creating product:', error)
@@ -294,14 +295,14 @@ app.post('/api/products', (req, res) => {
 app.put('/api/products/:id', (req, res) => {
     try {
         const { id } = req.params
-        const { name, stock, price, category } = req.body
+        const { name, stock, price, category, image } = req.body
 
         if (!name || !category) {
             return res.status(400).json({ message: 'Name and category are required' })
         }
 
-        const stmt = db.prepare('UPDATE products SET name = ?, stock = ?, price = ?, category = ? WHERE id = ?')
-        const result = stmt.run(name.trim(), parseNumber(stock), parseNumber(price), category, id)
+        const stmt = db.prepare('UPDATE products SET name = ?, stock = ?, price = ?, category = ?, image = ? WHERE id = ?')
+        const result = stmt.run(name.trim(), parseNumber(stock), parseNumber(price), category, image || null, id)
         if (result.changes === 0) {
             return res.status(404).json({ message: 'Product not found' })
         }
@@ -407,14 +408,42 @@ app.get('/api/orders', (_req, res) => {
 
 app.post('/api/orders', (req, res) => {
     try {
-        const { customer, items, total, date, details, staffName } = req.body
+        const { customer, items, total, date, details, staffName, cartItems } = req.body
 
         if (!customer || !details || !date) {
             return res.status(400).json({ message: 'Customer, date, and details are required' })
         }
 
-        const stmt = db.prepare('INSERT INTO orders (customer, items, total, date, details, staffName) VALUES (?, ?, ?, ?, ?, ?)')
-        const result = stmt.run(customer.trim(), parseNumber(items), parseNumber(total), date, details, staffName || null)
+        if (Array.isArray(cartItems)) {
+            for (const item of cartItems) {
+                const product = db.prepare('SELECT id, name, stock FROM products WHERE id = ?').get(item.id)
+                if (!product) {
+                    return res.status(400).json({ message: `Product not found: ${item.name || item.id}` })
+                }
+                if (product.stock < item.quantity) {
+                    return res.status(400).json({ message: `Not enough stock for ${product.name}. Available: ${product.stock}` })
+                }
+            }
+        }
+
+        const stmt = db.prepare('INSERT INTO orders (customer, items, total, date, details, staffName, cartItems) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        const result = stmt.run(customer.trim(), parseNumber(items), parseNumber(total), date, details, staffName || null, JSON.stringify(cartItems || []))
+
+        if (Array.isArray(cartItems)) {
+            const updateStockStmt = db.prepare('UPDATE products SET stock = stock - ?, sales = sales + ? WHERE id = ?')
+            for (const item of cartItems) {
+                updateStockStmt.run(parseNumber(item.quantity), parseNumber(item.quantity), item.id)
+            }
+        }
+
+        const existingCustomer = db.prepare('SELECT id FROM customers WHERE name = ?').get(customer.trim())
+        if (existingCustomer) {
+            db.prepare('UPDATE customers SET orders = orders + 1, totalSpent = totalSpent + ? WHERE id = ?')
+              .run(parseNumber(total), existingCustomer.id)
+        } else {
+            db.prepare('INSERT INTO customers (name, orders, totalSpent) VALUES (?, ?, ?)')
+              .run(customer.trim(), 1, parseNumber(total))
+        }
 
         res.status(201).json({
             message: 'Order created',
@@ -437,11 +466,40 @@ app.post('/api/orders', (req, res) => {
 app.delete('/api/orders/:id', (req, res) => {
     try {
         const { id } = req.params
-        const stmt = db.prepare('DELETE FROM orders WHERE id = ?')
-        const result = stmt.run(id)
-        if (result.changes === 0) {
+
+        const order = db.prepare('SELECT customer, total, cartItems FROM orders WHERE id = ?').get(id)
+        if (!order) {
             return res.status(404).json({ message: 'Order not found' })
         }
+
+        const stmt = db.prepare('DELETE FROM orders WHERE id = ?')
+        stmt.run(id)
+
+        // Revert stock and sales
+        let cartItems = []
+        try {
+            cartItems = JSON.parse(order.cartItems || '[]')
+        } catch (_) {}
+
+        if (Array.isArray(cartItems)) {
+            const revertStmt = db.prepare('UPDATE products SET stock = stock + ?, sales = sales - ? WHERE id = ?')
+            for (const item of cartItems) {
+                revertStmt.run(parseNumber(item.quantity), parseNumber(item.quantity), item.id)
+            }
+        }
+
+        // Revert customer record
+        const customer = db.prepare('SELECT id, orders, totalSpent FROM customers WHERE name = ?').get(order.customer)
+        if (customer) {
+            const newOrders = Math.max(0, customer.orders - 1)
+            const newTotalSpent = Math.max(0, customer.totalSpent - parseNumber(order.total))
+            if (newOrders === 0) {
+                db.prepare('DELETE FROM customers WHERE id = ?').run(customer.id)
+            } else {
+                db.prepare('UPDATE customers SET orders = ?, totalSpent = ? WHERE id = ?').run(newOrders, newTotalSpent, customer.id)
+            }
+        }
+
         res.json({ message: 'Order deleted' })
     } catch (error) {
         console.error('Error deleting order:', error)

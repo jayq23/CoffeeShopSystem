@@ -197,6 +197,7 @@ function Admin() {
         price: parseInt(formData.price),
         category: formData.category,
         sales: 0,
+        image:  formData.image || null,
       };
 
       try {
@@ -220,7 +221,7 @@ function Admin() {
           price: Number(saved?.price) || payload.price,
           category: saved?.category || payload.category,
           sales: Number(saved?.sales) || 0,
-          image: formData.image || "",
+          image: saved?.image || formData.image || "",
         };
 
         setProducts([...products, newProduct]);
@@ -233,7 +234,6 @@ function Admin() {
 
     createProduct();
   };
-
   const updateProduct = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/products/${selectedItem.id}`, {
@@ -564,6 +564,7 @@ function Admin() {
     String(c.id).includes(searchTerm) || c.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+
   return (
     <div className="admin-container">
       <aside className="admin-sidebar">
@@ -652,22 +653,27 @@ function Admin() {
               </div>
 
               <div className="dashboard-section">
-                <h2>Recent Orders</h2>
-                <div className="table-container">
-                  <table className="admin-table">
-                    <thead>
-                      <tr><th>Order ID</th><th>Items</th><th>Total</th><th>Actions</th></tr>
-                    </thead>
-                    <tbody>
-                      {[...orders].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5).map((order) => (
+              <h2>Recent Orders</h2>
+              <div className="table-container">
+                <table className="admin-table">
+                  <thead>
+                    <tr><th>Order ID</th><th>Items</th><th>Total</th><th>Actions</th></tr>
+                  </thead>
+                  <tbody>
+                    {[...orders]
+                      .sort((a, b) => new Date(a.date) - new Date(b.date))
+                      .map((order, idx) => ({ order, num: idx + 1 }))
+                      .sort((a, b) => new Date(b.order.date) - new Date(a.order.date))
+                      .slice(0, 5)
+                      .map(({ order, num }) => (
                         <tr key={order.id}>
-                          <td>{order.id}</td><td>{order.items}</td><td>₱{order.total}</td>
+                          <td>{num}</td><td>{order.items}</td><td>₱{order.total}</td>
                           <td><button className="btn-action" onClick={() => openModal('viewOrder', order)}>View</button></td>
                         </tr>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
+                  </tbody>
+                </table>
+              </div>
               </div>
 
               <div className="dashboard-section">
@@ -704,9 +710,9 @@ function Admin() {
                 <table className="admin-table">
                   <thead><tr><th>Order ID</th><th>Items</th><th>Total</th><th>Date</th><th>Actions</th></tr></thead>
                   <tbody>
-                    {filteredOrders.map((order) => (
+                    {[...filteredOrders].reverse().map((order, index) => (
                       <tr key={order.id}>
-                        <td>{order.id}</td><td>{order.items}</td><td>₱{order.total}</td><td>{order.date}</td>
+                        <td>{index + 1}</td><td>{order.items}</td><td>₱{order.total}</td><td>{order.date}</td>
                         <td>
                           <div className="action-buttons">
                             <button className="btn-action" onClick={() => openModal('viewOrder', order)}>View</button>
@@ -724,7 +730,7 @@ function Admin() {
           {activeTab === "products" && (
             <div className="dashboard-section">
               <div className="section-header">
-                <h2>Product Inventory ({products.length})</h2>
+                <h2>Product Inventory</h2>
                 <div className="header-actions">
                   <div className="search-bar">
                     <Search size={18} />
@@ -765,7 +771,7 @@ function Admin() {
           {activeTab === "customers" && (
             <div className="dashboard-section">
               <div className="section-header">
-                <h2>Customer Management ({customers.length})</h2>
+                <h2>Customer Management</h2>
                 <div className="header-actions">
                   <div className="search-bar">
                     <Search size={18} />
@@ -780,9 +786,9 @@ function Admin() {
                 <table className="admin-table">
                   <thead><tr><th>Customer ID</th><th>Name</th><th>Total Orders</th><th>Total Spent</th><th>Actions</th></tr></thead>
                   <tbody>
-                    {filteredCustomers.map((customer) => (
+                    {filteredCustomers.map((customer, index) => (
                       <tr key={customer.id}>
-                        <td>#{customer.id}</td>
+                        <td>#{index + 1}</td>
                         <td>{customer.name}</td>
                         <td>{customer.orders}</td><td>₱{customer.totalSpent.toLocaleString()}</td>
                         <td>
@@ -806,7 +812,7 @@ function Admin() {
           {activeTab === "staffs" && (
             <div className="dashboard-section">
               <div className="section-header">
-                <h2>Cashier Management ({staffs.length})</h2>
+                <h2>Cashier Management</h2>
                 <div className="header-actions">
                   <div className="search-bar">
                     <Search size={18} />
@@ -876,11 +882,6 @@ function Admin() {
                   <h3>Shop Information</h3>
                   <p>Update shop name, address, and contact details</p>
                   <button className="btn-secondary" onClick={() => openModal('shopInfo')}>Edit</button>
-                </div>
-                <div className="setting-item">
-                  <h3>Payment Methods</h3>
-                  <p>Configure accepted payment options</p>
-                  <button className="btn-secondary" onClick={() => openModal('paymentMethods')}>Configure</button>
                 </div>
                 <div className="setting-item">
                   <h3>User Accounts</h3>

@@ -20,7 +20,8 @@
     font-family: 'Georgia', serif; /* Classic serif font for vintage feel */
     color: #3e2723;
     padding: 20px;
-    width: 100vw;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 /* Header Styling */
@@ -151,9 +152,75 @@
 }
 
 /* Small-screen adjustments */
+@media (max-width: 768px) {
+  .header {
+    padding: 15px 20px;
+  }
+  
+  .header h1 {
+    font-size: 2rem;
+  }
+  
+  .product-list {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    padding: 0 10px;
+  }
+}
+
 @media (max-width: 600px) {
-  .product-list { grid-template-columns: 1fr; gap: 18px; }
-  .product-item { padding: 16px; border-radius: var(--radius); }
-  .btn-add, .btn-inc { padding: 12px; font-size: 16px; }
-  .quantity { font-size: 2rem; }
+  .system-container {
+    padding: 15px;
+  }
+  
+  .header {
+    flex-direction: column;
+    gap: 15px;
+    padding: 15px 15px;
+    border-bottom: 2px double #3e2723;
+    margin-bottom: 25px;
+  }
+  
+  .header h1 {
+    font-size: 1.8rem;
+    letter-spacing: 1px;
+  }
+  
+  .product-list {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+  
+  .product-item {
+    padding: 15px;
+    border-radius: var(--radius);
+  }
+  
+  .product-item img {
+    height: 150px;
+  }
+  
+  .product-item h2 {
+    font-size: 1.1rem;
+  }
+  
+  .quantity {
+    font-size: 1.8rem;
+  }
+  
+  .btn-add, .btn-inc {
+    padding: 10px;
+    font-size: 14px;
+    height: 40px;
+  }
+  
+  .btn-inc {
+    width: 40px;
+    font-size: 1rem;
+  }
+  
+  .btn, .btnLogout {
+    padding: 10px 15px;
+    font-size: 14px;
+  }
 }

@@ -32,16 +32,8 @@ function StaffDashboard() {
   }, []);
 
   const getProductImage = (product) => {
-    if (product?.image) return product.image;
-    const name = (product?.name || "").toLowerCase();
-    if (name.includes("matcha")) return matchaLatteImg;
-    if (name.includes("chocolate")) return chocolateDrinkImg;
-    if (name.includes("caramel")) return caramelHazelnutImg;
-    if (name.includes("americano") || name.includes("amerikano")) return iceAmericanoImg;
-    if (name.includes("espresso")) return espressoImg;
-    if (name.includes("milk tea") || name.includes("milktea")) return milkteaImg;
-    return null;
-  };
+    return product?.image || null;
+  };  
 
   const logOut = () => {
     if(window.confirm(`Are you sure you want to log out?`)){
@@ -84,7 +76,7 @@ function StaffDashboard() {
     return cartItems.reduce((total, item) => total + (item.price * item.quantity), 0);
   };
 
-  const submitOrder = async () => {
+const submitOrder = async () => {
     if (cartItems.length === 0) {
       alert("Cart is empty!");
       return;
@@ -122,6 +114,7 @@ function StaffDashboard() {
           date: newOrder.date,
           details: newOrder.details,
           staffName,
+          cartItems: cartItems.map(item => ({ id: item.id, name: item.name, quantity: item.quantity })),
         }),
       });
       const data = await response.json();
@@ -130,17 +123,39 @@ function StaffDashboard() {
         alert(data?.message || "Failed to save order.");
         return;
       }
+
+      // Store order data for receipt and navigate
+      localStorage.setItem("lastOrder", JSON.stringify({
+        orderNum: "ORD-" + String(data.order?.id || 1).padStart(3, '0'),
+        timestamp: new Date(),
+        items: cartItems,
+        subtotal: totalAmount,
+        tax: 0,
+        total: totalAmount,
+        customer: normalizedCustomerName,
+        staffName: staffName,
+        paymentMethod: "Cash",
+      }));
+
+      // Refresh products to reflect updated stock
+      const productsResponse = await fetch(`${API_BASE_URL}/api/products`);
+      const productsData = await productsResponse.json();
+      if (productsResponse.ok) {
+        setProducts(Array.isArray(productsData?.products) ? productsData.products : []);
+      }
+
+      setCartItems([]);
+      setCustomerName("");
+      setShowCart(false);
+
+      // Navigate to receipt page
+      navigate("/staff/receipts");
     } catch (error) {
       console.error("Error creating order:", error);
       alert("Cannot connect to server.");
       return;
     }
-
-    alert(`Order submitted successfully!\nCustomer: ${normalizedCustomerName}\nStaff: ${staffName}\nTotal: ₱${totalAmount.toLocaleString()}`);
-    setCartItems([]);
-    setCustomerName("");
-    setShowCart(false);
-  };
+};
 
   return (
     <div className="staff-container">
