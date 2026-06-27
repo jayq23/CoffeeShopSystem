@@ -1,11 +1,9 @@
 const express = require('express')
 const cors = require('cors')
-const Database =  require('better-sqlite3')
-const path = require('path')
+const { Pool } = require('pg')
 const bcrypt = require('bcryptjs')
 
 const app = express()
-const db = new Database(path.join(__dirname, 'db.sqlite'))
 const BCRYPT_ROUNDS = 10
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173'
 const ADMIN_USERNAME = (process.env.ADMIN_USERNAME || 'jay123').trim().toLowerCase()
@@ -16,22 +14,28 @@ const DEFAULT_ADMIN = {
     role: 'admin'
 }
 const ALLOWED_ORIGINS = [
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'https://neutral-grounds.vercel.app',
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'https://neutral-grounds.vercel.app',
 ]
 
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+})
+
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
-      callback(null, true)
-    } else {
-      callback(new Error('Not allowed by CORS'))
-    }
-  },
+    origin: (origin, callback) => {
+        if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+            callback(null, true)
+        } else {
+            callback(new Error('Not allowed by CORS'))
+        }
+    },
 }))
 app.use(express.json({ limit: '10mb' }))
-app.get("/api/health", (req, res) => res.json({ status: "ok" }));
+
+app.get('/api/health', (_req, res) => res.json({ status: 'ok' }))
 
 const parseNumber = (value, fallback = 0) => {
     const parsed = Number(value)
@@ -39,253 +43,239 @@ const parseNumber = (value, fallback = 0) => {
 }
 
 const isBcryptHash = (value) => typeof value === 'string' && value.startsWith('$2')
-const hashPassword = (plainTextPassword) => bcrypt.hashSync(plainTextPassword, BCRYPT_ROUNDS)
-const ensureHashedPassword = (rawPassword) => {
-    if (!rawPassword) {
-        return ''
-    }
-    return isBcryptHash(rawPassword) ? rawPassword : hashPassword(rawPassword)
+const hashPassword = (plain) => bcrypt.hashSync(plain, BCRYPT_ROUNDS)
+const ensureHashedPassword = (raw) => {
+    if (!raw) return ''
+    return isBcryptHash(raw) ? raw : hashPassword(raw)
 }
 
 const todayIsoDate = () => new Date().toISOString().split('T')[0]
 
-//TABLE CREATION
+// ─── DB INIT ─────────────────────────────────────────────────────────────────
 
-//login table
-db.exec(`
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL UNIQUE,
-    password TEXT NOT NULL,
-    role TEXT NOT NULL
-);
-`) 
+async function initDB() {
+    const client = await pool.connect()
+    try {
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username TEXT NOT NULL UNIQUE,
+                password TEXT NOT NULL,
+                role TEXT NOT NULL
+            )
+        `)
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS registrations (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                number TEXT NOT NULL,
+                username TEXT NOT NULL UNIQUE,
+                password TEXT NOT NULL,
+                role TEXT NOT NULL
+            )
+        `)
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS products (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                stock INTEGER NOT NULL,
+                price INTEGER NOT NULL,
+                sales INTEGER DEFAULT 0,
+                category TEXT NOT NULL,
+                image TEXT DEFAULT NULL
+            )
+        `)
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS customers (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                orders INTEGER DEFAULT 0,
+                "totalSpent" INTEGER DEFAULT 0
+            )
+        `)
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS orders (
+                id SERIAL PRIMARY KEY,
+                customer TEXT NOT NULL,
+                items INTEGER NOT NULL,
+                total INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                details TEXT NOT NULL,
+                "staffName" TEXT,
+                "cartItems" TEXT
+            )
+        `)
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS staffs (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                position TEXT NOT NULL,
+                email TEXT NOT NULL,
+                "joinDate" TEXT NOT NULL,
+                username TEXT NOT NULL,
+                password TEXT NOT NULL
+            )
+        `)
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS "shopSettings" (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                "shopName" TEXT NOT NULL,
+                address TEXT NOT NULL,
+                phone TEXT NOT NULL,
+                email TEXT NOT NULL
+            )
+        `)
 
-//registration table
-db.exec(`
-CREATE TABLE IF NOT EXISTS registrations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL UNIQUE,
-    number TEXT NOT NULL,
-    username TEXT NOT NULL UNIQUE,
-    password TEXT NOT NULL,
-    role TEXT NOT NULL
-);
-`)
-
-//Ensure the default admin always exists.
-const adminExistsStmt = db.prepare('SELECT id FROM users WHERE username = ? AND role = ?')
-const insertUserStmt = db.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?)')
-
-if (!adminExistsStmt.get(DEFAULT_ADMIN.username, DEFAULT_ADMIN.role)) {
-    insertUserStmt.run(DEFAULT_ADMIN.username, hashPassword(DEFAULT_ADMIN.password), DEFAULT_ADMIN.role)
-}
-
-// Migrate legacy plaintext passwords to bcrypt hashes.
-const hashLegacyPasswords = () => {
-    const tables = ['users', 'registrations', 'staffs']
-    for (const tableName of tables) {
-        const rows = db.prepare(`SELECT id, password FROM ${tableName}`).all()
-        const updateStmt = db.prepare(`UPDATE ${tableName} SET password = ? WHERE id = ?`)
-        for (const row of rows) {
-            if (!isBcryptHash(row.password)) {
-                updateStmt.run(hashPassword(row.password), row.id)
-            }
+        // Ensure default admin exists
+        const adminCheck = await client.query(
+            'SELECT id FROM users WHERE username = $1 AND role = $2',
+            [DEFAULT_ADMIN.username, 'admin']
+        )
+        if (adminCheck.rows.length === 0) {
+            await client.query(
+                'INSERT INTO users (username, password, role) VALUES ($1, $2, $3)',
+                [DEFAULT_ADMIN.username, hashPassword(DEFAULT_ADMIN.password), 'admin']
+            )
         }
+
+        console.log('DB initialized')
+    } finally {
+        client.release()
     }
 }
 
-//products table
-db.exec(`
-CREATE TABLE IF NOT EXISTS products (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    stock INTEGER NOT NULL,
-    price INTEGER NOT NULL,
-    sales INTEGER DEFAULT 0,
-    category TEXT NOT NULL,
-    image TEXT DEFAULT NULL
-);
-`)
+// ─── REGISTER ────────────────────────────────────────────────────────────────
 
-// Migration: add image column if it doesn't exist yet
-try {
-    db.exec(`ALTER TABLE products ADD COLUMN image TEXT DEFAULT NULL`)
-} catch (_) {} // ignore if column already exists
+app.post('/api/register', async (req, res) => {
+    try {
+        const { name, email, number, username, password } = req.body
+        const normalizedUsername = username?.trim()?.toLowerCase()
+        const normalizedEmail = email?.trim()?.toLowerCase()
+        const role = 'user'
 
-//customers table
-db.exec(`
-CREATE TABLE IF NOT EXISTS customers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    orders INTEGER DEFAULT 0,
-    totalSpent INTEGER DEFAULT 0
-);
-`)
-
-//orders table
-db.exec(`
-CREATE TABLE IF NOT EXISTS orders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    customer TEXT NOT NULL,
-    items INTEGER NOT NULL,
-    total INTEGER NOT NULL,
-    date TEXT NOT NULL,
-    details TEXT NOT NULL,
-    staffName TEXT,
-    cartItems TEXT
-);
-`)
-// Migration: add cartItems column if it doesn't exist yet
-try {
-    db.exec(`ALTER TABLE orders ADD COLUMN cartItems TEXT`)
-} catch (_) {}
-
-//staffs table
-db.exec(`
-CREATE TABLE IF NOT EXISTS staffs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    position TEXT NOT NULL,
-    email TEXT NOT NULL,
-    joinDate TEXT NOT NULL,
-    username TEXT NOT NULL,
-    password TEXT NOT NULL
-);
-`)
-
-const ensureStaffForCashierStmt = db.prepare('SELECT id FROM staffs WHERE username = ?')
-const insertStaffForCashierStmt = db.prepare('INSERT INTO staffs (name, position, email, joinDate, username, password) VALUES (?, ?, ?, ?, ?, ?)')
-
-const ensureCashierStaffRecord = ({ username, password, name, email }) => {
-    const normalizedUsername = username?.trim()?.toLowerCase()
-    if (!normalizedUsername) {
-        return
-    }
-
-    if (ensureStaffForCashierStmt.get(normalizedUsername)) {
-        return
-    }
-
-    const safeName = name?.trim() || normalizedUsername
-    const safeEmail = email?.trim()?.toLowerCase() || `${normalizedUsername}@cashier.local`
-    insertStaffForCashierStmt.run(safeName, 'Cashier', safeEmail, todayIsoDate(), normalizedUsername, password)
-}
-
-// Backfill legacy cashier accounts that exist in users but are missing in staffs.
-const missingCashierStaffRows = db.prepare(`
-    SELECT u.username, u.password, r.name, r.email
-    FROM users u
-    LEFT JOIN staffs s ON s.username = u.username
-    LEFT JOIN registrations r ON r.username = u.username
-    WHERE u.role = 'user' AND s.id IS NULL
-`).all()
-
-for (const row of missingCashierStaffRows) {
-    ensureCashierStaffRecord({
-        username: row.username,
-        password: row.password,
-        name: row.name,
-        email: row.email,
-    })
-}
-
-//shop settings table
-db.exec(`
-CREATE TABLE IF NOT EXISTS shopSettings (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    shopName TEXT NOT NULL,
-    address TEXT NOT NULL,
-    phone TEXT NOT NULL,
-    email TEXT NOT NULL
-);
-`)
-
-hashLegacyPasswords()
-
-
-//Regisreration endpoint
-app.post('/api/register', (req, res) => {
-    try{
-        const { name, email, number, username, password } = req.body;
-        const normalizedUsername = username?.trim()?.toLowerCase();
-        const normalizedEmail = email?.trim()?.toLowerCase();
-        const role = 'user';
-        
         if (!name || !normalizedEmail || !number || !normalizedUsername || !password) {
-            return res.status(400).json({ message: 'All fields are required' });
+            return res.status(400).json({ message: 'All fields are required' })
         }
-
         if (normalizedUsername === DEFAULT_ADMIN.username) {
-            return res.status(403).json({ message: 'Admin account is reserved for owner' });
+            return res.status(403).json({ message: 'Admin account is reserved for owner' })
         }
 
-        const existingUserStmt = db.prepare('SELECT id FROM users WHERE username = ?')
-        if (existingUserStmt.get(normalizedUsername)) {
+        const existingUser = await pool.query('SELECT id FROM users WHERE username = $1', [normalizedUsername])
+        if (existingUser.rows.length > 0) {
             return res.status(409).json({ message: 'Username already exists' })
         }
 
-        const existingRegStmt = db.prepare('SELECT id FROM registrations WHERE email = ?')
-        if (existingRegStmt.get(normalizedEmail)) {
+        const existingReg = await pool.query('SELECT id FROM registrations WHERE email = $1', [normalizedEmail])
+        if (existingReg.rows.length > 0) {
             return res.status(409).json({ message: 'Email already exists' })
         }
 
-        const stmt = db.prepare('INSERT INTO registrations (name, email, number, username, password, role) VALUES (?, ?, ?, ?, ?, ?)');
         const hashedPassword = hashPassword(password)
-        stmt.run(name, normalizedEmail, number, normalizedUsername, hashedPassword, role);
 
-        // Keep login source in users table while preserving registration details separately.
-        insertUserStmt.run(normalizedUsername, hashedPassword, role)
-        ensureCashierStaffRecord({
-            username: normalizedUsername,
-            password: hashedPassword,
-            name,
-            email: normalizedEmail,
-        })
+        await pool.query(
+            'INSERT INTO registrations (name, email, number, username, password, role) VALUES ($1, $2, $3, $4, $5, $6)',
+            [name, normalizedEmail, number, normalizedUsername, hashedPassword, role]
+        )
+        await pool.query(
+            'INSERT INTO users (username, password, role) VALUES ($1, $2, $3)',
+            [normalizedUsername, hashedPassword, role]
+        )
+        await pool.query(
+            `INSERT INTO staffs (name, position, email, "joinDate", username, password)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT DO NOTHING`,
+            [name, 'Cashier', normalizedEmail, todayIsoDate(), normalizedUsername, hashedPassword]
+        )
 
-        res.status(201).json({ message: 'Registration successful', user: { username: normalizedUsername, role } });
-
+        res.status(201).json({ message: 'Registration successful', user: { username: normalizedUsername, role } })
     } catch (error) {
-        console.error('Error during registration:', error);
-        res.status(500).json({ message: 'Internal server error' });
+        console.error('Error during registration:', error)
+        res.status(500).json({ message: 'Internal server error' })
     }
-}) 
+})
 
-app.get('/api/users', (_req, res) => {
+// ─── LOGIN ───────────────────────────────────────────────────────────────────
+
+app.post('/api/login', async (req, res) => {
     try {
-        const rows = db.prepare('SELECT id, username, role FROM users ORDER BY id ASC').all()
-        res.json({ users: rows })
+        const { username, password, role } = req.body
+        const normalizedUsername = username?.trim()?.toLowerCase()
+
+        if (!normalizedUsername || !password || !role) {
+            return res.status(400).json({ message: 'All fields are required' })
+        }
+        if (role !== 'admin' && role !== 'user') {
+            return res.status(400).json({ message: 'Invalid role' })
+        }
+        if (role === 'admin' && normalizedUsername !== DEFAULT_ADMIN.username) {
+            return res.status(401).json({ message: 'Only owner account can access admin login' })
+        }
+
+        const result = await pool.query(
+            'SELECT * FROM users WHERE username = $1 AND role = $2',
+            [normalizedUsername, role]
+        )
+        const user = result.rows[0]
+
+        if (user && bcrypt.compareSync(password, user.password)) {
+            res.json({ message: 'Login successful', user: { id: user.id, username: user.username, role: user.role } })
+        } else {
+            res.status(401).json({ message: 'Invalid credentials' })
+        }
+    } catch (error) {
+        console.error('Error during login:', error)
+        res.status(500).json({ message: 'Internal server error' })
+    }
+})
+
+// ─── USERS ───────────────────────────────────────────────────────────────────
+
+app.get('/api/users', async (_req, res) => {
+    try {
+        const result = await pool.query('SELECT id, username, role FROM users ORDER BY id ASC')
+        res.json({ users: result.rows })
     } catch (error) {
         console.error('Error fetching users:', error)
         res.status(500).json({ message: 'Internal server error' })
     }
 })
 
-app.get('/api/products', (_req, res) => {
+// ─── PRODUCTS ────────────────────────────────────────────────────────────────
+
+app.get('/api/products', async (_req, res) => {
     try {
-        const rows = db.prepare('SELECT id, name, stock, price, sales, category, image FROM products ORDER BY id ASC').all()
-        res.json({ products: rows })
+        const result = await pool.query(
+            'SELECT id, name, stock, price, sales, category, image FROM products ORDER BY id ASC'
+        )
+        res.json({ products: result.rows })
     } catch (error) {
         console.error('Error fetching products:', error)
         res.status(500).json({ message: 'Internal server error' })
     }
 })
 
-app.post('/api/products', (req, res) => {
+app.post('/api/products', async (req, res) => {
     try {
         const { name, stock, price, category, sales, image } = req.body
-
         if (!name || !category) {
             return res.status(400).json({ message: 'Name and category are required' })
         }
-
-        const stmt = db.prepare('INSERT INTO products (name, stock, price, sales, category, image) VALUES (?, ?, ?, ?, ?, ?)')
-        const result = stmt.run(name.trim(), parseNumber(stock), parseNumber(price), parseNumber(sales), category, image || null)
-
+        const result = await pool.query(
+            'INSERT INTO products (name, stock, price, sales, category, image) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+            [name.trim(), parseNumber(stock), parseNumber(price), parseNumber(sales), category, image || null]
+        )
         res.status(201).json({
             message: 'Product created',
-            product: { id: result.lastInsertRowid, name: name.trim(), stock: parseNumber(stock), price: parseNumber(price), sales: parseNumber(sales), category, image: image || null }
+            product: {
+                id: result.rows[0].id,
+                name: name.trim(),
+                stock: parseNumber(stock),
+                price: parseNumber(price),
+                sales: parseNumber(sales),
+                category,
+                image: image || null,
+            }
         })
     } catch (error) {
         console.error('Error creating product:', error)
@@ -293,20 +283,18 @@ app.post('/api/products', (req, res) => {
     }
 })
 
-app.put('/api/products/:id', (req, res) => {
+app.put('/api/products/:id', async (req, res) => {
     try {
         const { id } = req.params
         const { name, stock, price, category, image } = req.body
-
         if (!name || !category) {
             return res.status(400).json({ message: 'Name and category are required' })
         }
-
-        const stmt = db.prepare('UPDATE products SET name = ?, stock = ?, price = ?, category = ?, image = ? WHERE id = ?')
-        const result = stmt.run(name.trim(), parseNumber(stock), parseNumber(price), category, image || null, id)
-        if (result.changes === 0) {
-            return res.status(404).json({ message: 'Product not found' })
-        }
+        const result = await pool.query(
+            'UPDATE products SET name = $1, stock = $2, price = $3, category = $4, image = $5 WHERE id = $6',
+            [name.trim(), parseNumber(stock), parseNumber(price), category, image || null, id]
+        )
+        if (result.rowCount === 0) return res.status(404).json({ message: 'Product not found' })
         res.json({ message: 'Product updated' })
     } catch (error) {
         console.error('Error updating product:', error)
@@ -314,14 +302,11 @@ app.put('/api/products/:id', (req, res) => {
     }
 })
 
-app.delete('/api/products/:id', (req, res) => {
+app.delete('/api/products/:id', async (req, res) => {
     try {
         const { id } = req.params
-        const stmt = db.prepare('DELETE FROM products WHERE id = ?')
-        const result = stmt.run(id)
-        if (result.changes === 0) {
-            return res.status(404).json({ message: 'Product not found' })
-        }
+        const result = await pool.query('DELETE FROM products WHERE id = $1', [id])
+        if (result.rowCount === 0) return res.status(404).json({ message: 'Product not found' })
         res.json({ message: 'Product deleted' })
     } catch (error) {
         console.error('Error deleting product:', error)
@@ -329,30 +314,31 @@ app.delete('/api/products/:id', (req, res) => {
     }
 })
 
-app.get('/api/customers', (_req, res) => {
+// ─── CUSTOMERS ───────────────────────────────────────────────────────────────
+
+app.get('/api/customers', async (_req, res) => {
     try {
-        const rows = db.prepare('SELECT id, name, orders, totalSpent FROM customers ORDER BY id ASC').all()
-        res.json({ customers: rows })
+        const result = await pool.query(
+            'SELECT id, name, orders, "totalSpent" FROM customers ORDER BY id ASC'
+        )
+        res.json({ customers: result.rows })
     } catch (error) {
         console.error('Error fetching customers:', error)
         res.status(500).json({ message: 'Internal server error' })
     }
 })
 
-app.post('/api/customers', (req, res) => {
+app.post('/api/customers', async (req, res) => {
     try {
         const { name, orders, totalSpent } = req.body
-
-        if (!name) {
-            return res.status(400).json({ message: 'Customer name is required' })
-        }
-
-        const stmt = db.prepare('INSERT INTO customers (name, orders, totalSpent) VALUES (?, ?, ?)')
-        const result = stmt.run(name.trim(), parseNumber(orders), parseNumber(totalSpent))
-
+        if (!name) return res.status(400).json({ message: 'Customer name is required' })
+        const result = await pool.query(
+            'INSERT INTO customers (name, orders, "totalSpent") VALUES ($1, $2, $3) RETURNING id',
+            [name.trim(), parseNumber(orders), parseNumber(totalSpent)]
+        )
         res.status(201).json({
             message: 'Customer created',
-            customer: { id: result.lastInsertRowid, name: name.trim(), orders: parseNumber(orders), totalSpent: parseNumber(totalSpent) }
+            customer: { id: result.rows[0].id, name: name.trim(), orders: parseNumber(orders), totalSpent: parseNumber(totalSpent) }
         })
     } catch (error) {
         console.error('Error creating customer:', error)
@@ -360,20 +346,16 @@ app.post('/api/customers', (req, res) => {
     }
 })
 
-app.put('/api/customers/:id', (req, res) => {
+app.put('/api/customers/:id', async (req, res) => {
     try {
         const { id } = req.params
         const { name, orders, totalSpent } = req.body
-
-        if (!name) {
-            return res.status(400).json({ message: 'Customer name is required' })
-        }
-
-        const stmt = db.prepare('UPDATE customers SET name = ?, orders = ?, totalSpent = ? WHERE id = ?')
-        const result = stmt.run(name.trim(), parseNumber(orders), parseNumber(totalSpent), id)
-        if (result.changes === 0) {
-            return res.status(404).json({ message: 'Customer not found' })
-        }
+        if (!name) return res.status(400).json({ message: 'Customer name is required' })
+        const result = await pool.query(
+            'UPDATE customers SET name = $1, orders = $2, "totalSpent" = $3 WHERE id = $4',
+            [name.trim(), parseNumber(orders), parseNumber(totalSpent), id]
+        )
+        if (result.rowCount === 0) return res.status(404).json({ message: 'Customer not found' })
         res.json({ message: 'Customer updated' })
     } catch (error) {
         console.error('Error updating customer:', error)
@@ -381,14 +363,11 @@ app.put('/api/customers/:id', (req, res) => {
     }
 })
 
-app.delete('/api/customers/:id', (req, res) => {
+app.delete('/api/customers/:id', async (req, res) => {
     try {
         const { id } = req.params
-        const stmt = db.prepare('DELETE FROM customers WHERE id = ?')
-        const result = stmt.run(id)
-        if (result.changes === 0) {
-            return res.status(404).json({ message: 'Customer not found' })
-        }
+        const result = await pool.query('DELETE FROM customers WHERE id = $1', [id])
+        if (result.rowCount === 0) return res.status(404).json({ message: 'Customer not found' })
         res.json({ message: 'Customer deleted' })
     } catch (error) {
         console.error('Error deleting customer:', error)
@@ -396,10 +375,14 @@ app.delete('/api/customers/:id', (req, res) => {
     }
 })
 
-app.get('/api/orders', (_req, res) => {
+// ─── ORDERS ──────────────────────────────────────────────────────────────────
+
+app.get('/api/orders', async (_req, res) => {
     try {
-        const rows = db.prepare('SELECT id, customer, items, total, date, details, staffName FROM orders ORDER BY id DESC').all()
-        const mapped = rows.map((row) => ({ ...row, staff: row.staffName || '' }))
+        const result = await pool.query(
+            'SELECT id, customer, items, total, date, details, "staffName" FROM orders ORDER BY id DESC'
+        )
+        const mapped = result.rows.map((row) => ({ ...row, staff: row.staffName || '' }))
         res.json({ orders: mapped })
     } catch (error) {
         console.error('Error fetching orders:', error)
@@ -407,7 +390,8 @@ app.get('/api/orders', (_req, res) => {
     }
 })
 
-app.post('/api/orders', (req, res) => {
+app.post('/api/orders', async (req, res) => {
+    const client = await pool.connect()
     try {
         const { customer, items, total, date, details, staffName, cartItems } = req.body
 
@@ -415,9 +399,14 @@ app.post('/api/orders', (req, res) => {
             return res.status(400).json({ message: 'Customer, date, and details are required' })
         }
 
+        // Validate stock
         if (Array.isArray(cartItems)) {
             for (const item of cartItems) {
-                const product = db.prepare('SELECT id, name, stock FROM products WHERE id = ?').get(item.id)
+                const productRes = await client.query(
+                    'SELECT id, name, stock FROM products WHERE id = $1',
+                    [item.id]
+                )
+                const product = productRes.rows[0]
                 if (!product) {
                     return res.status(400).json({ message: `Product not found: ${item.name || item.id}` })
                 }
@@ -427,98 +416,130 @@ app.post('/api/orders', (req, res) => {
             }
         }
 
-        const stmt = db.prepare('INSERT INTO orders (customer, items, total, date, details, staffName, cartItems) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        const result = stmt.run(customer.trim(), parseNumber(items), parseNumber(total), date, details, staffName || null, JSON.stringify(cartItems || []))
+        await client.query('BEGIN')
 
+        const orderRes = await client.query(
+            `INSERT INTO orders (customer, items, total, date, details, "staffName", "cartItems")
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+            [customer.trim(), parseNumber(items), parseNumber(total), date, details, staffName || null, JSON.stringify(cartItems || [])]
+        )
+        const orderId = orderRes.rows[0].id
+
+        // Decrement stock
         if (Array.isArray(cartItems)) {
-            const updateStockStmt = db.prepare('UPDATE products SET stock = stock - ?, sales = sales + ? WHERE id = ?')
             for (const item of cartItems) {
-                updateStockStmt.run(parseNumber(item.quantity), parseNumber(item.quantity), item.id)
+                await client.query(
+                    'UPDATE products SET stock = stock - $1, sales = sales + $2 WHERE id = $3',
+                    [parseNumber(item.quantity), parseNumber(item.quantity), item.id]
+                )
             }
         }
 
-        const existingCustomer = db.prepare('SELECT id FROM customers WHERE name = ?').get(customer.trim())
-        if (existingCustomer) {
-            db.prepare('UPDATE customers SET orders = orders + 1, totalSpent = totalSpent + ? WHERE id = ?')
-              .run(parseNumber(total), existingCustomer.id)
+        // Update or create customer
+        const custRes = await client.query(
+            'SELECT id FROM customers WHERE name = $1',
+            [customer.trim()]
+        )
+        if (custRes.rows.length > 0) {
+            await client.query(
+                'UPDATE customers SET orders = orders + 1, "totalSpent" = "totalSpent" + $1 WHERE id = $2',
+                [parseNumber(total), custRes.rows[0].id]
+            )
         } else {
-            db.prepare('INSERT INTO customers (name, orders, totalSpent) VALUES (?, ?, ?)')
-              .run(customer.trim(), 1, parseNumber(total))
+            await client.query(
+                'INSERT INTO customers (name, orders, "totalSpent") VALUES ($1, $2, $3)',
+                [customer.trim(), 1, parseNumber(total)]
+            )
         }
+
+        await client.query('COMMIT')
 
         res.status(201).json({
             message: 'Order created',
-            order: {
-                id: result.lastInsertRowid,
-                customer: customer.trim(),
-                items: parseNumber(items),
-                total: parseNumber(total),
-                date,
-                details,
-                staffName: staffName || null,
-            }
+            order: { id: orderId, customer: customer.trim(), items: parseNumber(items), total: parseNumber(total), date, details, staffName: staffName || null }
         })
     } catch (error) {
+        await client.query('ROLLBACK')
         console.error('Error creating order:', error)
         res.status(500).json({ message: 'Internal server error' })
+    } finally {
+        client.release()
     }
 })
 
-app.delete('/api/orders/:id', (req, res) => {
+app.delete('/api/orders/:id', async (req, res) => {
+    const client = await pool.connect()
     try {
         const { id } = req.params
 
-        const order = db.prepare('SELECT customer, total, cartItems FROM orders WHERE id = ?').get(id)
-        if (!order) {
-            return res.status(404).json({ message: 'Order not found' })
-        }
+        const orderRes = await client.query(
+            'SELECT customer, total, "cartItems" FROM orders WHERE id = $1',
+            [id]
+        )
+        if (orderRes.rows.length === 0) return res.status(404).json({ message: 'Order not found' })
+        const order = orderRes.rows[0]
 
-        const stmt = db.prepare('DELETE FROM orders WHERE id = ?')
-        stmt.run(id)
+        await client.query('BEGIN')
 
-        // Revert stock and sales
+        await client.query('DELETE FROM orders WHERE id = $1', [id])
+
+        // Revert stock
         let cartItems = []
-        try {
-            cartItems = JSON.parse(order.cartItems || '[]')
-        } catch (_) {}
-
+        try { cartItems = JSON.parse(order.cartItems || '[]') } catch (_) {}
         if (Array.isArray(cartItems)) {
-            const revertStmt = db.prepare('UPDATE products SET stock = stock + ?, sales = sales - ? WHERE id = ?')
             for (const item of cartItems) {
-                revertStmt.run(parseNumber(item.quantity), parseNumber(item.quantity), item.id)
+                await client.query(
+                    'UPDATE products SET stock = stock + $1, sales = sales - $2 WHERE id = $3',
+                    [parseNumber(item.quantity), parseNumber(item.quantity), item.id]
+                )
             }
         }
 
-        // Revert customer record
-        const customer = db.prepare('SELECT id, orders, totalSpent FROM customers WHERE name = ?').get(order.customer)
-        if (customer) {
-            const newOrders = Math.max(0, customer.orders - 1)
-            const newTotalSpent = Math.max(0, customer.totalSpent - parseNumber(order.total))
+        // Revert customer
+        const custRes = await client.query(
+            'SELECT id, orders, "totalSpent" FROM customers WHERE name = $1',
+            [order.customer]
+        )
+        if (custRes.rows.length > 0) {
+            const cust = custRes.rows[0]
+            const newOrders = Math.max(0, cust.orders - 1)
+            const newTotalSpent = Math.max(0, cust.totalSpent - parseNumber(order.total))
             if (newOrders === 0) {
-                db.prepare('DELETE FROM customers WHERE id = ?').run(customer.id)
+                await client.query('DELETE FROM customers WHERE id = $1', [cust.id])
             } else {
-                db.prepare('UPDATE customers SET orders = ?, totalSpent = ? WHERE id = ?').run(newOrders, newTotalSpent, customer.id)
+                await client.query(
+                    'UPDATE customers SET orders = $1, "totalSpent" = $2 WHERE id = $3',
+                    [newOrders, newTotalSpent, cust.id]
+                )
             }
         }
 
+        await client.query('COMMIT')
         res.json({ message: 'Order deleted' })
     } catch (error) {
+        await client.query('ROLLBACK')
         console.error('Error deleting order:', error)
         res.status(500).json({ message: 'Internal server error' })
+    } finally {
+        client.release()
     }
 })
 
-app.get('/api/staffs', (_req, res) => {
+// ─── STAFFS ──────────────────────────────────────────────────────────────────
+
+app.get('/api/staffs', async (_req, res) => {
     try {
-        const rows = db.prepare('SELECT id, name, position, email, joinDate, username FROM staffs ORDER BY id ASC').all()
-        res.json({ staffs: rows })
+        const result = await pool.query(
+            'SELECT id, name, position, email, "joinDate", username FROM staffs ORDER BY id ASC'
+        )
+        res.json({ staffs: result.rows })
     } catch (error) {
         console.error('Error fetching staffs:', error)
         res.status(500).json({ message: 'Internal server error' })
     }
 })
 
-app.post('/api/staffs', (req, res) => {
+app.post('/api/staffs', async (req, res) => {
     try {
         const { name, email, joinDate, username, password, position } = req.body
         const normalizedUsername = username?.trim()?.toLowerCase()
@@ -526,25 +547,31 @@ app.post('/api/staffs', (req, res) => {
         if (!name || !email || !joinDate || !normalizedUsername || !password) {
             return res.status(400).json({ message: 'All staff fields are required' })
         }
-
         if (normalizedUsername === DEFAULT_ADMIN.username) {
             return res.status(403).json({ message: 'Admin account is reserved for owner' })
         }
 
-        const userExistsStmt = db.prepare('SELECT id FROM users WHERE username = ?')
-        if (userExistsStmt.get(normalizedUsername)) {
+        const existingUser = await pool.query('SELECT id FROM users WHERE username = $1', [normalizedUsername])
+        if (existingUser.rows.length > 0) {
             return res.status(409).json({ message: 'Username already exists' })
         }
 
         const hashedPassword = hashPassword(password)
-        const insertStaffStmt = db.prepare('INSERT INTO staffs (name, position, email, joinDate, username, password) VALUES (?, ?, ?, ?, ?, ?)')
-        const result = insertStaffStmt.run(name.trim(), position || 'Cashier', email.trim(), joinDate, normalizedUsername, hashedPassword)
-        insertUserStmt.run(normalizedUsername, hashedPassword, 'user')
+
+        const result = await pool.query(
+            `INSERT INTO staffs (name, position, email, "joinDate", username, password)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+            [name.trim(), position || 'Cashier', email.trim(), joinDate, normalizedUsername, hashedPassword]
+        )
+        await pool.query(
+            'INSERT INTO users (username, password, role) VALUES ($1, $2, $3)',
+            [normalizedUsername, hashedPassword, 'user']
+        )
 
         res.status(201).json({
             message: 'Staff created',
             staff: {
-                id: result.lastInsertRowid,
+                id: result.rows[0].id,
                 name: name.trim(),
                 position: position || 'Cashier',
                 email: email.trim(),
@@ -558,7 +585,7 @@ app.post('/api/staffs', (req, res) => {
     }
 })
 
-app.put('/api/staffs/:id', (req, res) => {
+app.put('/api/staffs/:id', async (req, res) => {
     try {
         const { id } = req.params
         const { name, email, joinDate, username, password, position } = req.body
@@ -567,28 +594,34 @@ app.put('/api/staffs/:id', (req, res) => {
         if (!name || !email || !joinDate || !normalizedUsername || !password) {
             return res.status(400).json({ message: 'All staff fields are required' })
         }
-
         if (normalizedUsername === DEFAULT_ADMIN.username) {
             return res.status(403).json({ message: 'Admin account is reserved for owner' })
         }
 
-        const currentStaffStmt = db.prepare('SELECT username FROM staffs WHERE id = ?')
-        const currentStaff = currentStaffStmt.get(id)
-        if (!currentStaff) {
+        const currentStaffRes = await pool.query('SELECT username FROM staffs WHERE id = $1', [id])
+        if (currentStaffRes.rows.length === 0) {
             return res.status(404).json({ message: 'Staff not found' })
         }
+        const currentUsername = currentStaffRes.rows[0].username
 
-        const userExistsStmt = db.prepare('SELECT id FROM users WHERE username = ? AND username != ?')
-        if (userExistsStmt.get(normalizedUsername, currentStaff.username)) {
+        const conflictRes = await pool.query(
+            'SELECT id FROM users WHERE username = $1 AND username != $2',
+            [normalizedUsername, currentUsername]
+        )
+        if (conflictRes.rows.length > 0) {
             return res.status(409).json({ message: 'Username already exists' })
         }
 
         const hashedPassword = ensureHashedPassword(password)
-        const staffStmt = db.prepare('UPDATE staffs SET name = ?, position = ?, email = ?, joinDate = ?, username = ?, password = ? WHERE id = ?')
-        staffStmt.run(name.trim(), position || 'Cashier', email.trim(), joinDate, normalizedUsername, hashedPassword, id)
 
-        const updateUserStmt = db.prepare('UPDATE users SET username = ?, password = ? WHERE username = ? AND role = ?')
-        updateUserStmt.run(normalizedUsername, hashedPassword, currentStaff.username, 'user')
+        await pool.query(
+            `UPDATE staffs SET name = $1, position = $2, email = $3, "joinDate" = $4, username = $5, password = $6 WHERE id = $7`,
+            [name.trim(), position || 'Cashier', email.trim(), joinDate, normalizedUsername, hashedPassword, id]
+        )
+        await pool.query(
+            'UPDATE users SET username = $1, password = $2 WHERE username = $3 AND role = $4',
+            [normalizedUsername, hashedPassword, currentUsername, 'user']
+        )
 
         res.json({ message: 'Staff updated' })
     } catch (error) {
@@ -597,17 +630,15 @@ app.put('/api/staffs/:id', (req, res) => {
     }
 })
 
-app.delete('/api/staffs/:id', (req, res) => {
+app.delete('/api/staffs/:id', async (req, res) => {
     try {
         const { id } = req.params
-        const staffStmt = db.prepare('SELECT username FROM staffs WHERE id = ?')
-        const staff = staffStmt.get(id)
-        if (!staff) {
-            return res.status(404).json({ message: 'Staff not found' })
-        }
+        const staffRes = await pool.query('SELECT username FROM staffs WHERE id = $1', [id])
+        if (staffRes.rows.length === 0) return res.status(404).json({ message: 'Staff not found' })
+        const { username } = staffRes.rows[0]
 
-        db.prepare('DELETE FROM staffs WHERE id = ?').run(id)
-        db.prepare('DELETE FROM users WHERE username = ? AND role = ?').run(staff.username, 'user')
+        await pool.query('DELETE FROM staffs WHERE id = $1', [id])
+        await pool.query('DELETE FROM users WHERE username = $1 AND role = $2', [username, 'user'])
         res.json({ message: 'Staff deleted' })
     } catch (error) {
         console.error('Error deleting staff:', error)
@@ -615,16 +646,15 @@ app.delete('/api/staffs/:id', (req, res) => {
     }
 })
 
-app.get('/api/shop-settings', (_req, res) => {
+// ─── SHOP SETTINGS ───────────────────────────────────────────────────────────
+
+app.get('/api/shop-settings', async (_req, res) => {
     try {
-        const row = db.prepare('SELECT shopName, address, phone, email FROM shopSettings WHERE id = 1').get()
+        const result = await pool.query(
+            'SELECT "shopName", address, phone, email FROM "shopSettings" WHERE id = 1'
+        )
         res.json({
-            shopSettings: row || {
-                shopName: '',
-                address: '',
-                phone: '',
-                email: '',
-            }
+            shopSettings: result.rows[0] || { shopName: '', address: '', phone: '', email: '' }
         })
     } catch (error) {
         console.error('Error fetching shop settings:', error)
@@ -632,25 +662,22 @@ app.get('/api/shop-settings', (_req, res) => {
     }
 })
 
-app.put('/api/shop-settings', (req, res) => {
+app.put('/api/shop-settings', async (req, res) => {
     try {
         const { shopName, address, phone, email } = req.body
-
         if (!shopName || !address || !phone || !email) {
             return res.status(400).json({ message: 'All shop settings fields are required' })
         }
-
-        const upsertStmt = db.prepare(`
-            INSERT INTO shopSettings (id, shopName, address, phone, email)
-            VALUES (1, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                shopName = excluded.shopName,
-                address = excluded.address,
-                phone = excluded.phone,
-                email = excluded.email
-        `)
-        upsertStmt.run(shopName.trim(), address.trim(), phone.trim(), email.trim())
-
+        await pool.query(
+            `INSERT INTO "shopSettings" (id, "shopName", address, phone, email)
+             VALUES (1, $1, $2, $3, $4)
+             ON CONFLICT (id) DO UPDATE SET
+                "shopName" = EXCLUDED."shopName",
+                address = EXCLUDED.address,
+                phone = EXCLUDED.phone,
+                email = EXCLUDED.email`,
+            [shopName.trim(), address.trim(), phone.trim(), email.trim()]
+        )
         res.json({ message: 'Shop settings saved' })
     } catch (error) {
         console.error('Error saving shop settings:', error)
@@ -658,15 +685,17 @@ app.put('/api/shop-settings', (req, res) => {
     }
 })
 
-app.post('/api/reset', (_req, res) => {
+// ─── RESET ───────────────────────────────────────────────────────────────────
+
+app.post('/api/reset', async (_req, res) => {
     try {
-        db.prepare('DELETE FROM orders').run()
-        db.prepare('DELETE FROM products').run()
-        db.prepare('DELETE FROM customers').run()
-        db.prepare('DELETE FROM staffs').run()
-        db.prepare('DELETE FROM shopSettings').run()
-        db.prepare("DELETE FROM users WHERE role = 'user'").run()
-        db.prepare('DELETE FROM registrations').run()
+        await pool.query('DELETE FROM orders')
+        await pool.query('DELETE FROM products')
+        await pool.query('DELETE FROM customers')
+        await pool.query('DELETE FROM staffs')
+        await pool.query('DELETE FROM "shopSettings"')
+        await pool.query("DELETE FROM users WHERE role = 'user'")
+        await pool.query('DELETE FROM registrations')
         res.json({ message: 'System data reset complete' })
     } catch (error) {
         console.error('Error resetting system data:', error)
@@ -674,40 +703,12 @@ app.post('/api/reset', (_req, res) => {
     }
 })
 
- //Login endpoint
- app.post('/api/login', (req, res) => {
-    try{
-      const {username, password, role} = req.body;
-            const normalizedUsername = username?.trim()?.toLowerCase();
-
-            if (!normalizedUsername || !password || !role) {
-        return res.status(400).json({ message: 'All fields are required' });
-      }
-
-            if (role !== 'admin' && role !== 'user') {
-                return res.status(400).json({ message: 'Invalid role' });
-            }
-
-            // Only the owner account can log in as admin.
-            if (role === 'admin' && normalizedUsername !== DEFAULT_ADMIN.username) {
-                return res.status(401).json({ message: 'Only owner account can access admin login' });
-            }
-
-    const stmt = db.prepare('SELECT * FROM users WHERE username = ? AND role = ?');
-        const user = stmt.get(normalizedUsername, role);
-
-    if (user && bcrypt.compareSync(password, user.password)) {
-        res.json({ message: 'Login successful', user: { id: user.id, username: user.username, role: user.role } });
-      } else {
-        res.status(401).json({ message: 'Invalid credentials' });
-      }
-    } catch (error) {
-      console.error('Error during login:', error);
-      res.status(500).json({ message: 'Internal server error' });
-    }
- })
+// ─── START ───────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 5000
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`)
+initDB().then(() => {
+    app.listen(PORT, () => console.log(`Server running on port ${PORT}`))
+}).catch((err) => {
+    console.error('Failed to initialize DB:', err)
+    process.exit(1)
 })
