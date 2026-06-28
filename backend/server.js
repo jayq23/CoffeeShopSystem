@@ -1,5 +1,9 @@
 import 'dotenv/config';
 import express from 'express';
+
+console.log('ADMIN_USERNAME:', process.env.ADMIN_USERNAME);
+console.log('ADMIN_PASSWORD:', process.env.ADMIN_PASSWORD);
+
 import cors from 'cors';
 import { initDB, pool } from './config/db.js';
 
