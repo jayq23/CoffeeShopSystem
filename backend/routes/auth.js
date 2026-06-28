@@ -71,8 +71,6 @@ router.post('/login', async (req, res) => {
 
     // Admin login — validated against env vars, no DB lookup needed
     if (role === 'admin') {
-        console.log('ENV USERNAME:', JSON.stringify(getAdminUsername()))
-        console.log('INPUT USERNAME:', JSON.stringify(normalizedUsername))
       if (normalizedUsername !== getAdminUsername()) {
         return res.status(401).json({ message: 'Only owner account can access admin login' });
       }
