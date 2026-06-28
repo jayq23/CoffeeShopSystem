@@ -1,11 +1,11 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
-import FrontPage from "./system/frontPage.jsx";
+import FrontPage from "./frontend/frontPage.jsx";
 import Login from "./auth/login.jsx";
 import Register from "./auth/register.jsx";
-import StaffDashboard from "./system/staffDashboard.jsx";
+import StaffDashboard from "./frontend/staffDashboard.jsx";
 import ProtectedRoute from "./ProtectedRoute.jsx";
-import Admin from "./system/adminDashboard.jsx";
+import Admin from "./frontend/adminDashboard.jsx";
 import Receipt from "./components/Receipt.jsx";
 
 function App() {
