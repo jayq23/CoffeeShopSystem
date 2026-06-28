@@ -1,10 +1,10 @@
 import express from 'express';
-const router = express.Router();
 import bcrypt from 'bcryptjs';
-
 import { pool } from '../config/db.js';
 import { hashPassword, todayIsoDate, getAdminUsername, getAdminPassword } from '../utils/helpers.js';
 
+const router = express.Router();
+// Registration route
 router.post('/register', async (req, res) => {
     try {
         const { name, email, number, username, password } = req.body
@@ -52,7 +52,7 @@ router.post('/register', async (req, res) => {
         res.status(500).json({ message: 'Internal server error' })
     }
 })
-
+// Login route
 router.post('/login', async (req, res) => {
     try {
         const { username, password, role } = req.body
@@ -64,10 +64,20 @@ router.post('/login', async (req, res) => {
         if (role !== 'admin' && role !== 'user') {
             return res.status(400).json({ message: 'Invalid role' })
         }
-        if (role === 'admin' && normalizedUsername !== getAdminUsername()) {
-            return res.status(401).json({ message: 'Only owner account can access admin login' })
+        if(role === 'admin'){
+            if(normalizedUsername !== getAdminUsername()){
+                return res.status(403).json({ message: 'Only owner account can access admin login' })
+            }
+            const isPasswordMatch = bcrypt.compareSync(password, getAdminPassword())
+            if(!isPasswordMatch){
+                return res.status(401).json({ message: 'Invalid credentials' })
+            }
+            return res.json({
+                message: 'Login successful',
+                user: { id: 0, username: normalizedUsername, role: 'admin' }
+            })
         }
-
+        //User login - DB lookup
         const result = await pool.query(
             'SELECT * FROM users WHERE username = $1 AND role = $2',
             [normalizedUsername, role]
