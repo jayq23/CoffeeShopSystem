@@ -18,7 +18,7 @@ function Login() {
 
     const handleNavigation = (path) => {
         const container = document.querySelector('.bodyLogin');
-        if (container) {
+        if (!container) {
             container.classList.add('fade-out');
             setTimeout(() => {
                 navigate(path);
